@@ -1,13 +1,15 @@
 {
-  "name": "limitimer",
+  "name": "limiton",
   "version": "1.0.0",
-  "description": "Синхронизированный таймер для нескольких пользователей",
-  "main": "server.js",
+  "private": true,
+  "author": "Your Name",
+  "description": "Таймер для управления временем",
   "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2"
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build",
+    "electron:build": "vue-cli-service electron:build",
+    "electron:serve": "vue-cli-service electron:serve",
+    "postinstall": "electron-builder install-app-deps",
+    "postuninstall": "electron-builder install-app-deps"
   }
 } 
