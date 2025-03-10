@@ -1,3 +1,6 @@
+// Инициализация Socket.IO
+const socket = io();
+
 class Timer {
     constructor(id) {
         this.timeLeft = 600; // 10 минут в секундах по умолчанию
@@ -43,11 +46,25 @@ class Timer {
             this.updateDisplay();
             this.updateProgress();
             updateTimerProportions();
+            
+            // Отправляем обновление на сервер
+            socket.emit('updateTimer', {
+                id: this.id,
+                timeLeft: this.timeLeft,
+                name: this.userNameInput.value,
+                isRunning: this.timerId !== null
+            });
         });
 
         this.startBtn.addEventListener('click', this.startTimer);
         this.resetBtn.addEventListener('click', this.resetTimer);
         this.backgroundPause.addEventListener('click', this.startTimer);
+        this.userNameInput.addEventListener('input', () => {
+            socket.emit('updateTimer', {
+                id: this.id,
+                name: this.userNameInput.value
+            });
+        });
 
         // Инициализация отображения
         this.updateDisplay();
@@ -117,10 +134,26 @@ class Timer {
             this.showBackgroundInfo();
             this.updateTabTitle();
 
+            // Отправляем обновление на сервер
+            socket.emit('updateTimer', {
+                id: this.id,
+                timeLeft: this.timeLeft,
+                name: this.userNameInput.value,
+                isRunning: true
+            });
+
             this.timerId = setInterval(() => {
                 this.timeLeft--;
                 this.updateDisplay();
                 this.updateProgress();
+
+                // Отправляем обновление на сервер
+                socket.emit('updateTimer', {
+                    id: this.id,
+                    timeLeft: this.timeLeft,
+                    name: this.userNameInput.value,
+                    isRunning: true
+                });
 
                 if (this.timeLeft === 300 && !this.warningPlayed) {
                     playSound(warningSound);
@@ -136,6 +169,14 @@ class Timer {
                     this.timerMinutesInput.disabled = false;
                     document.title = 'Лимитон';
                     playSound(finishSound);
+                    
+                    // Отправляем обновление на сервер
+                    socket.emit('updateTimer', {
+                        id: this.id,
+                        timeLeft: this.timeLeft,
+                        name: this.userNameInput.value,
+                        isRunning: false
+                    });
                 }
             }, 1000);
         } else {
@@ -146,6 +187,14 @@ class Timer {
             this.timerMinutesInput.disabled = false;
             this.hideBackgroundInfo();
             document.title = 'Лимитон';
+            
+            // Отправляем обновление на сервер
+            socket.emit('updateTimer', {
+                id: this.id,
+                timeLeft: this.timeLeft,
+                name: this.userNameInput.value,
+                isRunning: false
+            });
         }
     }
 
@@ -162,6 +211,15 @@ class Timer {
         this.timerMinutesInput.disabled = false;
         this.hideBackgroundInfo();
         document.title = 'Лимитон';
+        
+        // Отправляем обновление на сервер
+        socket.emit('updateTimer', {
+            id: this.id,
+            timeLeft: this.timeLeft,
+            name: this.userNameInput.value,
+            isRunning: false
+        });
+        
         updateTimerProportions();
     }
 }
@@ -227,6 +285,7 @@ function updateTimerProportions() {
     
     // Обновляем отображение общего времени
     document.getElementById('totalMinutes').textContent = totalTime;
+    socket.emit('updateTotalMinutes', totalTime);
     
     timer1.section.style.flex = time1 / totalTime;
     
@@ -303,17 +362,18 @@ addTimerButton.addEventListener('click', () => {
     const fourthSection = document.querySelector('.timer-section.fourth');
     const fifthSection = document.querySelector('.timer-section.fifth');
     
+    let newCount = 1;
     if (rightSection.classList.contains('hidden')) {
-        rightSection.classList.remove('hidden');
+        newCount = 2;
     } else if (thirdSection.classList.contains('hidden')) {
-        thirdSection.classList.remove('hidden');
+        newCount = 3;
     } else if (fourthSection.classList.contains('hidden')) {
-        fourthSection.classList.remove('hidden');
+        newCount = 4;
     } else if (fifthSection.classList.contains('hidden')) {
-        fifthSection.classList.remove('hidden');
+        newCount = 5;
     }
     
-    updateTimerProportions();
+    socket.emit('updateVisibleTimers', newCount);
 });
 
 hideButton2.addEventListener('click', () => {
@@ -406,7 +466,106 @@ function resetAllTimers() {
 
 // Добавляем обработчик для кнопки сброса
 const resetAllButton = document.getElementById('resetAll');
-resetAllButton.addEventListener('click', resetAllTimers);
+resetAllButton.addEventListener('click', () => {
+    socket.emit('resetAll');
+});
 
 // Инициализация начальных позиций
 updateTimerProportions();
+
+// Обработка событий Socket.IO
+socket.on('initialState', (state) => {
+    // Обновляем состояние всех таймеров
+    state.timers.forEach(timerData => {
+        const timer = [timer1, timer2, timer3, timer4, timer5].find(t => t.id === timerData.id);
+        if (timer) {
+            timer.timeLeft = timerData.timeLeft;
+            timer.initialTime = timerData.timeLeft;
+            timer.userNameInput.value = timerData.name;
+            timer.timerMinutesInput.value = Math.floor(timerData.timeLeft / 60);
+            timer.minutesValueSpan.textContent = Math.floor(timerData.timeLeft / 60);
+            timer.updateDisplay();
+            timer.updateProgress();
+            
+            if (timerData.isRunning) {
+                timer.startTimer();
+            }
+        }
+    });
+    
+    // Обновляем видимость таймеров
+    updateVisibleTimers(state.visibleTimers);
+    
+    // Обновляем общее время
+    document.getElementById('totalMinutes').textContent = state.totalMinutes;
+});
+
+socket.on('timerUpdated', (timerData) => {
+    const timer = [timer1, timer2, timer3, timer4, timer5].find(t => t.id === timerData.id);
+    if (timer) {
+        if (timerData.timeLeft !== undefined) {
+            timer.timeLeft = timerData.timeLeft;
+            timer.initialTime = timerData.timeLeft;
+            timer.timerMinutesInput.value = Math.floor(timerData.timeLeft / 60);
+            timer.minutesValueSpan.textContent = Math.floor(timerData.timeLeft / 60);
+        }
+        if (timerData.name !== undefined) {
+            timer.userNameInput.value = timerData.name;
+        }
+        if (timerData.isRunning !== undefined) {
+            if (timerData.isRunning && timer.timerId === null) {
+                timer.startTimer();
+            } else if (!timerData.isRunning && timer.timerId !== null) {
+                timer.startTimer();
+            }
+        }
+        timer.updateDisplay();
+        timer.updateProgress();
+    }
+});
+
+socket.on('visibleTimersUpdated', (count) => {
+    updateVisibleTimers(count);
+});
+
+socket.on('allTimersReset', (state) => {
+    // Обновляем состояние всех таймеров
+    state.timers.forEach(timerData => {
+        const timer = [timer1, timer2, timer3, timer4, timer5].find(t => t.id === timerData.id);
+        if (timer) {
+            timer.timeLeft = timerData.timeLeft;
+            timer.initialTime = timerData.timeLeft;
+            timer.userNameInput.value = timerData.name;
+            timer.timerMinutesInput.value = Math.floor(timerData.timeLeft / 60);
+            timer.minutesValueSpan.textContent = Math.floor(timerData.timeLeft / 60);
+            timer.updateDisplay();
+            timer.updateProgress();
+        }
+    });
+    
+    // Обновляем видимость таймеров
+    updateVisibleTimers(state.visibleTimers);
+    
+    // Обновляем общее время
+    document.getElementById('totalMinutes').textContent = state.totalMinutes;
+});
+
+socket.on('totalMinutesUpdated', (total) => {
+    document.getElementById('totalMinutes').textContent = total;
+});
+
+// Функция обновления видимости таймеров
+function updateVisibleTimers(count) {
+    const sections = ['.right', '.third', '.fourth', '.fifth'];
+    sections.forEach((section, index) => {
+        const element = document.querySelector(`.timer-section${section}`);
+        if (element) {
+            if (index < count - 1) {
+                element.classList.remove('hidden');
+            } else {
+                element.classList.add('hidden');
+            }
+        }
+    });
+    updateTimerProportions();
+}
